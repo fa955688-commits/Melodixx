@@ -1,14 +1,14 @@
 {
-  "name": "melodix-lavalink-bot",
-  "version": "3.0.0",
-  "description": "Professional Lavalink Music Bot",
+  "name": "melodix-lavalink-pro",
+  "version": "4.0.0",
+  "description": "Enterprise Grade Lavalink Music Bot",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "discord.js": "^14.14.1",
-    "poru": "^2.3.1",
+    "erela.js": "^2.4.0",
     "express": "^4.18.2",
     "dotenv": "^16.4.5"
   }
