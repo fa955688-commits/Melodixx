@@ -17,66 +17,62 @@ const client = new Client({
     ]
 });
 
-// 3. Lavalink Nodes Configuration 
+// 3. Lavalink Nodes Configuration (Free Public Node)
 const nodes = [
     {
-        name: 'Free-Lavalink',
-        host: 'lavalink.jonathansk.com', //ট
+        name: 'Main-Node',
+        host: 'lavalink.jonathansk.com',
         port: 443,
         password: 'https://dsc.gg/ajdevserver',
         secure: true
     }
 ];
 
-// Initialize Poru (Lavalink Client)
+// Initialize Poru
 client.poru = new Poru(client, nodes, {
     apple: true,
     spotify: true
 });
 
-// Lavalink Events
-client.poru.on('nodeConnect', (node) => console.log(`🎵 Lavalink Node "${node.name}" Connected successfully!`));
+// Lavalink Event Listeners
+client.poru.on('nodeConnect', (node) => console.log(`🎵 Lavalink Node "${node.name}" Connected!`));
 client.poru.on('nodeError', (node, error) => console.log(`❌ Lavalink Node Error: ${error.message}`));
 
-client.poru.on('trackStart', (player, track) => {
+const playerStartHandler = (player, track) => {
     const channel = client.channels.cache.get(player.textChannel);
     if (!channel) return;
 
     const embed = new EmbedBuilder()
         .setColor('#00ffbb')
-        .setTitle('🎶 Now Playing (Lavalink Stream)')
+        .setTitle('🎶 Now Playing')
         .setDescription(`[${track.info.title}](${track.info.uri})`)
-        .setThumbnail(track.info.image)
         .addFields(
             { name: 'Author', value: track.info.author, inline: true },
-            { name: 'Duration', value: new Date(track.info.length).toISOString().substr(11, 8), inline: true }
+            { name: 'Source', value: track.info.isStream ? 'Live Stream' : 'Lavalink Engine', inline: true }
         )
-        .setFooter({ text: 'Powered by Lavalink Engine' });
+        .setFooter({ text: 'Melodix Lavalink Edition' });
 
     channel.send({ embeds: [embed] });
-});
+};
+client.poru.on('trackStart', playerStartHandler);
 
-// Voice State Update for Lavalink
-client.on('voiceStateUpdate', (oldState, newState) => {
-    client.poru.sendRawData(oldState.guild.id, {
-        op: 'voiceUpdate',
-        guildId: newState.guild.id,
-        sessionId: newState.sessionId,
-        event: newState.voiceChannel // Handled automatically by Poru
-    });
-});
+// Voice Update Handler
+client.on('raw', (d) => client.poru.packetRouter(d));
 
 client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}!`);
-    client.poru.init(client); // Initialize Lavalink
+    client.poru.init(client);
 });
 
-// 4. Prefix Command Handler (!!play)
-const PREFIX = '!!';
+// 4. Command Handler with 'koi' Prefix
+const PREFIX = 'koi'; // এখানে নতুন প্রিফিক্স 'koi' সেট করা হয়েছে
+
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.content.startsWith(PREFIX)) return;
 
-    const args = message.content.slice(PREFIX.length).trim().split(/ +/);
+    // প্রিফিক্স চেক করার পর কমান্ড আলাদা করা (koiplay -> play)
+    const commandBody = message.content.slice(PREFIX.length).trim();
+    const args = commandBody.split(/ +/);
     const command = args.shift().toLowerCase();
 
     if (command === 'play') {
@@ -86,7 +82,6 @@ client.on('messageCreate', async (message) => {
         const voiceChannel = message.member?.voice.channel;
         if (!voiceChannel) return message.reply('You need to join a voice channel first!');
 
-        // Create or get the player for the guild
         const player = client.poru.createConnection({
             guildId: message.guild.id,
             voiceChannel: voiceChannel.id,
@@ -94,18 +89,17 @@ client.on('messageCreate', async (message) => {
             deaf: true
         });
 
-        // Search track via Lavalink
         const resolve = await client.poru.resolve(query);
         
         if (resolve.loadType === 'LOAD_FAILED' || resolve.loadType === 'NO_MATCHES') {
-            return message.reply('❌ No results found or Lavalink failed to load.');
+            return message.reply('❌ No results found on Lavalink Node.');
         }
 
         if (resolve.loadType === 'PLAYLIST_LOADED') {
             for (const track of resolve.tracks) {
                 player.queue.add(track);
             }
-            message.reply(`🎶 Added playlist **${resolve.playlistInfo.name}** with ${resolve.tracks.length} songs.`);
+            message.reply(`🎶 Added playlist **${resolve.playlistInfo.name}** (${resolve.tracks.length} songs).`);
             if (!player.isPlaying) player.play();
         } else {
             const track = resolve.tracks[0];
