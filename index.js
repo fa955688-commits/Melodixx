@@ -1,13 +1,11 @@
-const { Client, GatewayIntentBits, Routes, REST, ApplicationCommandOptionType, EmbedBuilder } = require('discord.js');
-const { Player } = require('discord-player');
-const { YoutubeiExtractor } = require('discord-player-youtubei');
+const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const { Poru } = require('poru');
 const express = require('express');
 
-// 1. Light Web Server for Render
+// 1. Web Server for Hosting
 const app = express();
-const port = process.env.PORT || 3000;
-app.get('/', (req, res) => res.send('Melodix Pro is Running!'));
-app.listen(port, () => console.log(`Web server active on port ${port}`));
+app.get('/', (req, res) => res.send('Lavalink Bot is Online!'));
+app.listen(process.env.PORT || 3000);
 
 // 2. Initialize Discord Client
 const client = new Client({
@@ -19,113 +17,102 @@ const client = new Client({
     ]
 });
 
-// 3. Initialize Music Player with Optimized Buffering
-const player = new Player(client, {
-    ytdlOptions: {
-        quality: 'highestaudio',
-        highWaterMark: 1 << 22 // মেমোরি বাঁচাতে বাফারিং সাইজ কমানো হয়েছে
-    }
-});
-
-// Global Player Error Handlers
-player.events.on('error', (queue, error) => console.log(`[Player Error] ${error.message}`));
-player.events.on('playerError', (queue, error) => console.log(`[Connection Error] ${error.message}`));
-
-// Load only the most stable Youtubei extractor (Supports YouTube, Spotify links via bridge)
-async function initPlayer() {
-    await player.extractors.register(YoutubeiExtractor, {});
-    console.log('Optimized Music Engine Loaded!');
-}
-initPlayer();
-
-// Premium Embed Notification
-player.events.on('playerStart', (queue, track) => {
-    const embed = new EmbedBuilder()
-        .setColor('#00ffbb')
-        .setTitle('🎶 Now Playing')
-        .setDescription(`[${track.title}](${track.url})`)
-        .setThumbnail(track.thumbnail)
-        .addFields(
-            { name: 'Duration', value: track.duration, inline: true },
-            { name: 'Requested By', value: `${queue.metadata.author}`, inline: true }
-        )
-        .setFooter({ text: 'Melodix Premium' })
-        .setTimestamp();
-
-    queue.metadata.channel.send({ embeds: [embed] });
-});
-
-// Slash Command Definition
-const commands = [
+// 3. Lavalink Nodes Configuration 
+const nodes = [
     {
-        name: 'play',
-        description: 'Play any song/link (Spotify/YouTube)',
-        options: [
-            {
-                name: 'song',
-                type: ApplicationCommandOptionType.String,
-                description: 'Song name or link',
-                required: true
-            }
-        ]
+        name: 'Free-Lavalink',
+        host: 'lavalink.jonathansk.com', //ট
+        port: 443,
+        password: 'https://dsc.gg/ajdevserver',
+        secure: true
     }
 ];
 
-client.once('ready', async () => {
+// Initialize Poru (Lavalink Client)
+client.poru = new Poru(client, nodes, {
+    apple: true,
+    spotify: true
+});
+
+// Lavalink Events
+client.poru.on('nodeConnect', (node) => console.log(`🎵 Lavalink Node "${node.name}" Connected successfully!`));
+client.poru.on('nodeError', (node, error) => console.log(`❌ Lavalink Node Error: ${error.message}`));
+
+client.poru.on('trackStart', (player, track) => {
+    const channel = client.channels.cache.get(player.textChannel);
+    if (!channel) return;
+
+    const embed = new EmbedBuilder()
+        .setColor('#00ffbb')
+        .setTitle('🎶 Now Playing (Lavalink Stream)')
+        .setDescription(`[${track.info.title}](${track.info.uri})`)
+        .setThumbnail(track.info.image)
+        .addFields(
+            { name: 'Author', value: track.info.author, inline: true },
+            { name: 'Duration', value: new Date(track.info.length).toISOString().substr(11, 8), inline: true }
+        )
+        .setFooter({ text: 'Powered by Lavalink Engine' });
+
+    channel.send({ embeds: [embed] });
+});
+
+// Voice State Update for Lavalink
+client.on('voiceStateUpdate', (oldState, newState) => {
+    client.poru.sendRawData(oldState.guild.id, {
+        op: 'voiceUpdate',
+        guildId: newState.guild.id,
+        sessionId: newState.sessionId,
+        event: newState.voiceChannel // Handled automatically by Poru
+    });
+});
+
+client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}!`);
-    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_CLIENT_TOKEN);
-    try {
-        await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-        console.log('Slash commands synced.');
-    } catch (error) {
-        console.error(error);
-    }
+    client.poru.init(client); // Initialize Lavalink
 });
 
-async function handlePlay(channel, query, context) {
-    try {
-        await player.play(channel, query, {
-            nodeOptions: {
-                metadata: context,
-                leaveOnEmpty: true,
-                leaveOnEmptyCooldown: 30000,
-                leaveOnEnd: false
-            }
-        });
-    } catch (e) {
-        console.error(e);
-        context.channel.send('❌ Out of memory or stream error. Please try again!');
-    }
-}
-
-// 4. Slash Command Handler
-client.on('interactionCreate', async (interaction) => {
-    if (!interaction.isChatInputCommand()) return;
-    if (interaction.commandName === 'play') {
-        const query = interaction.options.getString('song');
-        const channel = interaction.member?.voice.channel;
-        if (!channel) return interaction.reply({ content: 'You need to join a voice channel first!', ephemeral: true });
-        
-        await interaction.reply(`🔍 Processing...`);
-        await handlePlay(channel, query, interaction);
-    }
-});
-
-// 5. Prefix Command Handler
+// 4. Prefix Command Handler (!!play)
 const PREFIX = '!!';
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.content.startsWith(PREFIX)) return;
+
     const args = message.content.slice(PREFIX.length).trim().split(/ +/);
     const command = args.shift().toLowerCase();
 
     if (command === 'play') {
         const query = args.join(' ');
         if (!query) return message.reply('Please provide a song name or link!');
-        const channel = message.member?.voice.channel;
-        if (!channel) return message.reply('You need to join a voice channel first!');
 
-        await message.reply(`🔍 Processing...`);
-        await handlePlay(channel, query, message);
+        const voiceChannel = message.member?.voice.channel;
+        if (!voiceChannel) return message.reply('You need to join a voice channel first!');
+
+        // Create or get the player for the guild
+        const player = client.poru.createConnection({
+            guildId: message.guild.id,
+            voiceChannel: voiceChannel.id,
+            textChannel: message.channel.id,
+            deaf: true
+        });
+
+        // Search track via Lavalink
+        const resolve = await client.poru.resolve(query);
+        
+        if (resolve.loadType === 'LOAD_FAILED' || resolve.loadType === 'NO_MATCHES') {
+            return message.reply('❌ No results found or Lavalink failed to load.');
+        }
+
+        if (resolve.loadType === 'PLAYLIST_LOADED') {
+            for (const track of resolve.tracks) {
+                player.queue.add(track);
+            }
+            message.reply(`🎶 Added playlist **${resolve.playlistInfo.name}** with ${resolve.tracks.length} songs.`);
+            if (!player.isPlaying) player.play();
+        } else {
+            const track = resolve.tracks[0];
+            player.queue.add(track);
+            message.reply(`🔍 Added to queue: **${track.info.title}**`);
+            if (!player.isPlaying) player.play();
+        }
     }
 });
 
