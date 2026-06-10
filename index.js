@@ -26,7 +26,7 @@ const player = new Player(client, {
     }
 });
 
-// Global Player Error Handlers (Fixes the UnhandledEventsWarning)
+// Global Player Error Handlers
 player.events.on('error', (queue, error) => {
     console.log(`[Player Error] ${error.message}`);
 });
@@ -34,7 +34,7 @@ player.events.on('playerError', (queue, error) => {
     console.log(`[Connection Error] ${error.message}`);
 });
 
-// Load default extractors
+// Load Default Extractors (Spotify, SoundCloud, Apple Music etc.)
 player.extractors.loadDefault();
 
 // Track Start Event
@@ -46,7 +46,7 @@ player.events.on('playerStart', (queue, track) => {
 const commands = [
     {
         name: 'play',
-        description: 'Play a song from YouTube/Spotify',
+        description: 'Play a song from Spotify/SoundCloud',
         options: [
             {
                 name: 'song',
