@@ -1,14 +1,13 @@
 const { Client, GatewayIntentBits, Routes, REST, ApplicationCommandOptionType, EmbedBuilder } = require('discord.js');
 const { Player } = require('discord-player');
 const { YoutubeiExtractor } = require('discord-player-youtubei');
-const { SpotifyExtractor, SoundCloudExtractor } = require('@discord-player/extractor');
 const express = require('express');
 
-// 1. Web Server for Render Hosting
+// 1. Light Web Server for Render
 const app = express();
 const port = process.env.PORT || 3000;
-app.get('/', (req, res) => res.send('Melodix Pro is Online!'));
-app.listen(port, () => console.log(`Web server running on port ${port}`));
+app.get('/', (req, res) => res.send('Melodix Pro is Running!'));
+app.listen(port, () => console.log(`Web server active on port ${port}`));
 
 // 2. Initialize Discord Client
 const client = new Client({
@@ -20,11 +19,11 @@ const client = new Client({
     ]
 });
 
-// 3. Initialize Music Player with Audio Configurations
+// 3. Initialize Music Player with Optimized Buffering
 const player = new Player(client, {
     ytdlOptions: {
         quality: 'highestaudio',
-        highWaterMark: 1 << 25
+        highWaterMark: 1 << 22 // মেমোরি বাঁচাতে বাফারিং সাইজ কমানো হয়েছে
     }
 });
 
@@ -32,16 +31,14 @@ const player = new Player(client, {
 player.events.on('error', (queue, error) => console.log(`[Player Error] ${error.message}`));
 player.events.on('playerError', (queue, error) => console.log(`[Connection Error] ${error.message}`));
 
-// Load all extractors properly
-async function loadExtractors() {
+// Load only the most stable Youtubei extractor (Supports YouTube, Spotify links via bridge)
+async function initPlayer() {
     await player.extractors.register(YoutubeiExtractor, {});
-    await player.extractors.register(SpotifyExtractor, {});
-    await player.extractors.register(SoundCloudExtractor, {});
-    console.log('All Professional Extractors Loaded Successfully!');
+    console.log('Optimized Music Engine Loaded!');
 }
-loadExtractors();
+initPlayer();
 
-// Professional Embed Notification on Song Start
+// Premium Embed Notification
 player.events.on('playerStart', (queue, track) => {
     const embed = new EmbedBuilder()
         .setColor('#00ffbb')
@@ -52,8 +49,8 @@ player.events.on('playerStart', (queue, track) => {
             { name: 'Duration', value: track.duration, inline: true },
             { name: 'Requested By', value: `${queue.metadata.author}`, inline: true }
         )
-        .setTimestamp()
-        .setFooter({ text: 'Melodix Premium Music Experience' });
+        .setFooter({ text: 'Melodix Premium' })
+        .setTimestamp();
 
     queue.metadata.channel.send({ embeds: [embed] });
 });
@@ -62,7 +59,7 @@ player.events.on('playerStart', (queue, track) => {
 const commands = [
     {
         name: 'play',
-        description: 'Play any song or playlist',
+        description: 'Play any song/link (Spotify/YouTube)',
         options: [
             {
                 name: 'song',
@@ -74,19 +71,17 @@ const commands = [
     }
 ];
 
-// Register Slash Commands
 client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_CLIENT_TOKEN);
     try {
         await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-        console.log('Application (/) commands registered.');
+        console.log('Slash commands synced.');
     } catch (error) {
         console.error(error);
     }
 });
 
-// Shared Play Function
 async function handlePlay(channel, query, context) {
     try {
         await player.play(channel, query, {
@@ -99,7 +94,7 @@ async function handlePlay(channel, query, context) {
         });
     } catch (e) {
         console.error(e);
-        context.channel.send('❌ Could not process or stream this track. Try another link/name!');
+        context.channel.send('❌ Out of memory or stream error. Please try again!');
     }
 }
 
@@ -111,7 +106,7 @@ client.on('interactionCreate', async (interaction) => {
         const channel = interaction.member?.voice.channel;
         if (!channel) return interaction.reply({ content: 'You need to join a voice channel first!', ephemeral: true });
         
-        await interaction.reply(`🔍 Processing your request...`);
+        await interaction.reply(`🔍 Processing...`);
         await handlePlay(channel, query, interaction);
     }
 });
@@ -125,11 +120,11 @@ client.on('messageCreate', async (message) => {
 
     if (command === 'play') {
         const query = args.join(' ');
-        if (!query) return message.reply('Please provide a song name or a link!');
+        if (!query) return message.reply('Please provide a song name or link!');
         const channel = message.member?.voice.channel;
         if (!channel) return message.reply('You need to join a voice channel first!');
 
-        await message.reply(`🔍 Processing your request...`);
+        await message.reply(`🔍 Processing...`);
         await handlePlay(channel, query, message);
     }
 });
