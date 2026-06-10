@@ -3,7 +3,7 @@ const { Manager } = require('erela.js');
 const express = require('express');
 
 // 1. Production Web Server for 24/7 Hosting uptime
-const app = express();
+const app = reportExpress => express();
 app.get('/', (req, res) => res.send('Melodix Lavalink Engine: Active'));
 app.listen(process.env.PORT || 3000, () => console.log('Web server initialized.'));
 
@@ -17,10 +17,10 @@ const client = new Client({
     ]
 });
 
-// 3. High-Uptime Public Lavalink Node Configuration
+// 3. Updated High-Uptime Public Lavalink Node Configuration
 const nodes = [
     {
-        host: 'lavalink.jonathansk.com',
+        host: 'lavalink.lavaclient.xyz', // Updated to a highly stable, alternative free node
         port: 443,
         password: 'https://dsc.gg/ajdevserver',
         secure: true
