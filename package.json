@@ -1,7 +1,7 @@
 {
   "name": "melodix-lavalink-pro",
-  "version": "4.0.0",
-  "description": "Enterprise Grade Lavalink Music Bot",
+  "version": "4.1.0",
+  "description": "Production-Ready Lavalink Music Bot",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
