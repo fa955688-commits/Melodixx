@@ -1,5 +1,6 @@
 const { Client, GatewayIntentBits, Routes, REST, ApplicationCommandOptionType } = require('discord.js');
 const { Player } = require('discord-player');
+const { SpotifyExtractor, SoundCloudExtractor } = require('@discord-player/extractor');
 const express = require('express');
 
 // 1. Web Server for Render Hosting
@@ -34,8 +35,13 @@ player.events.on('playerError', (queue, error) => {
     console.log(`[Connection Error] ${error.message}`);
 });
 
-// Load Default Extractors (Spotify, SoundCloud, Apple Music etc.)
-player.extractors.loadDefault();
+// ONLY Load Spotify and SoundCloud (Completely bypassing YouTube Extractor Warning)
+async function loadExtractors() {
+    await player.extractors.register(SpotifyExtractor, {});
+    await player.extractors.register(SoundCloudExtractor, {});
+    console.log('Extractors Loaded: Spotify & SoundCloud Only!');
+}
+loadExtractors();
 
 // Track Start Event
 player.events.on('playerStart', (queue, track) => {
