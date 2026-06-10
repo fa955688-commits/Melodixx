@@ -1,14 +1,14 @@
 {
   "name": "melodix-lavalink-pro",
-  "version": "4.1.0",
-  "description": "Production-Ready Lavalink Music Bot",
+  "version": "6.0.0",
+  "description": "Production Grade Ultra Stable Lavalink Music Bot",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "discord.js": "^14.14.1",
-    "erela.js": "^2.4.0",
+    "lavalink-client": "^2.2.2",
     "express": "^4.18.2",
     "dotenv": "^16.4.5"
   }
