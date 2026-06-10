@@ -1,13 +1,13 @@
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
-const { Poru } = require('poru');
+const { Manager } = require('erela.js');
 const express = require('express');
 
-// 1. Web Server for Hosting
+// 1. Production Web Server for 24/7 Hosting uptime
 const app = express();
-app.get('/', (req, res) => res.send('Lavalink Bot is Online!'));
-app.listen(process.env.PORT || 3000);
+app.get('/', (req, res) => res.send('Melodix Lavalink Engine: Active'));
+app.listen(process.env.PORT || 3000, () => console.log('Web server initialized.'));
 
-// 2. Initialize Discord Client
+// 2. Initialize Discord Client with Strict Voice/Guild Intents
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -17,10 +17,9 @@ const client = new Client({
     ]
 });
 
-// 3. Lavalink Nodes Configuration (Free Public Node)
+// 3. High-Uptime Public Lavalink Node Configuration
 const nodes = [
     {
-        name: 'Main-Node',
         host: 'lavalink.jonathansk.com',
         port: 443,
         password: 'https://dsc.gg/ajdevserver',
@@ -28,84 +27,101 @@ const nodes = [
     }
 ];
 
-// Initialize Poru
-client.poru = new Poru(client, nodes, {
-    apple: true,
-    spotify: true
-});
-
-// Lavalink Event Listeners
-client.poru.on('nodeConnect', (node) => console.log(`🎵 Lavalink Node "${node.name}" Connected!`));
-client.poru.on('nodeError', (node, error) => console.log(`❌ Lavalink Node Error: ${error.message}`));
-
-const playerStartHandler = (player, track) => {
+// Initialize Erela.js Manager
+client.manager = new Manager({
+    nodes,
+    send(id, payload) {
+        const guild = client.guilds.cache.get(id);
+        if (guild) guild.shard.send(payload);
+    }
+})
+.on('nodeConnect', node => console.log(`[Lavalink] Connection established on: ${node.options.host}`))
+.on('nodeError', (node, error) => console.log(`[Lavalink] Node error: ${error.message}`))
+.on('trackStart', (player, track) => {
     const channel = client.channels.cache.get(player.textChannel);
     if (!channel) return;
 
     const embed = new EmbedBuilder()
         .setColor('#00ffbb')
         .setTitle('🎶 Now Playing')
-        .setDescription(`[${track.info.title}](${track.info.uri})`)
+        .setDescription(`[${track.title}](${track.uri})`)
         .addFields(
-            { name: 'Author', value: track.info.author, inline: true },
-            { name: 'Source', value: track.info.isStream ? 'Live Stream' : 'Lavalink Engine', inline: true }
+            { name: 'Uploader', value: track.author, inline: true },
+            { name: 'Duration', value: track.isStream ? '🔴 Live' : new Date(track.duration).toISOString().substr(11, 8), inline: true }
         )
-        .setFooter({ text: 'Melodix Lavalink Edition' });
+        .setFooter({ text: 'Melodix Premium Enterprise Engine' })
+        .setTimestamp();
 
     channel.send({ embeds: [embed] });
-};
-client.poru.on('trackStart', playerStartHandler);
-
-// Voice Update Handler
-client.on('raw', (d) => client.poru.packetRouter(d));
-
-client.once('ready', () => {
-    console.log(`Logged in as ${client.user.tag}!`);
-    client.poru.init(client);
+})
+.on('queueEnd', player => {
+    const channel = client.channels.cache.get(player.textChannel);
+    if (channel) channel.send('Queue is empty. Leaving voice channel...');
+    player.destroy();
 });
 
-// 4. Command Handler with 'koi' Prefix
-const PREFIX = 'koi'; // এখানে নতুন প্রিফিক্স 'koi' সেট করা হয়েছে
+// 4. Raw Voice State Gateway Forwarding
+client.on('raw', d => client.manager.updateVoiceState(d));
 
-client.on('messageCreate', async (message) => {
-    if (message.author.bot || !message.content.startsWith(PREFIX)) return;
+client.once('ready', () => {
+    console.log(`System Check: Logged in as ${client.user.tag}`);
+    client.manager.init(client.user.id);
+});
 
-    // প্রিফিক্স চেক করার পর কমান্ড আলাদা করা (koiplay -> play)
-    const commandBody = message.content.slice(PREFIX.length).trim();
+// 5. Command Handler with '!!' Prefix
+const PREFIX = '!!';
+
+client.on('messageCreate', async message => {
+    if (message.author.bot || !message.guild) return;
+
+    let content = message.content.trim();
+    if (!content.toLowerCase().startsWith(PREFIX)) return;
+
+    let commandBody = content.slice(PREFIX.length).trim();
     const args = commandBody.split(/ +/);
     const command = args.shift().toLowerCase();
 
     if (command === 'play') {
         const query = args.join(' ');
-        if (!query) return message.reply('Please provide a song name or link!');
+        if (!query) return message.reply('❌ Please provide a song name or valid streaming link!');
 
         const voiceChannel = message.member?.voice.channel;
-        if (!voiceChannel) return message.reply('You need to join a voice channel first!');
+        if (!voiceChannel) return message.reply('⚠️ You must join a voice channel first!');
 
-        const player = client.poru.createConnection({
-            guildId: message.guild.id,
+        // Create player connection
+        const player = client.manager.create({
+            guild: message.guild.id,
             voiceChannel: voiceChannel.id,
             textChannel: message.channel.id,
-            deaf: true
+            selfDeafen: true
         });
 
-        const resolve = await client.poru.resolve(query);
-        
-        if (resolve.loadType === 'LOAD_FAILED' || resolve.loadType === 'NO_MATCHES') {
-            return message.reply('❌ No results found on Lavalink Node.');
-        }
+        if (player.state !== "CONNECTED") player.connect();
 
-        if (resolve.loadType === 'PLAYLIST_LOADED') {
-            for (const track of resolve.tracks) {
-                player.queue.add(track);
+        try {
+            const res = await client.manager.search(query, message.author);
+            
+            if (res.loadType === 'LOAD_FAILED') {
+                if (!player.queue.current) player.destroy();
+                return message.reply('❌ Lavalink failed to parse this track.');
             }
-            message.reply(`🎶 Added playlist **${resolve.playlistInfo.name}** (${resolve.tracks.length} songs).`);
-            if (!player.isPlaying) player.play();
-        } else {
-            const track = resolve.tracks[0];
-            player.queue.add(track);
-            message.reply(`🔍 Added to queue: **${track.info.title}**`);
-            if (!player.isPlaying) player.play();
+            if (res.loadType === 'NO_MATCHES') {
+                if (!player.queue.current) player.destroy();
+                return message.reply('❌ No results found for your query.');
+            }
+
+            if (res.loadType === 'PLAYLIST_LOADED') {
+                player.queue.add(res.tracks);
+                if (!player.playing && !player.paused && player.queue.totalSize === res.tracks.length) player.play();
+                return message.reply(`🎶 Successfully queued playlist: **${res.playlist.name}** (${res.tracks.length} tracks).`);
+            } else {
+                player.queue.add(res.tracks[0]);
+                if (!player.playing && !player.paused && !player.queue.size) player.play();
+                return message.reply(`🔍 Added to queue: **${res.tracks[0].title}**`);
+            }
+        } catch (err) {
+            console.error(err);
+            message.reply('❌ An error occurred while searching for the track.');
         }
     }
 });
