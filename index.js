@@ -1,9 +1,8 @@
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
-const { Connectors } = require('shoukaku');
-const { Kazagumo } = require('kazagumo');
+const { LavalinkManager } = require('lavalink-client');
 const express = require('express');
 
-// 1. Production Web Server for 24/7 Hosting uptime
+// 1. Production Web Server for 24/7 Hosting Uptime
 const app = express();
 app.get('/', (req, res) => res.send('Melodix Cluster: Active'));
 app.listen(process.env.PORT || 3000, () => console.log('Web server initialized.'));
@@ -18,62 +17,60 @@ const client = new Client({
     ]
 });
 
-// 3. High-Uptime Public Lavalink Node Configuration
-const Nodes = [{
-    name: 'Production-Node',
-    url: 'lavalink.lavaclient.xyz:443',
-    auth: 'https://dsc.gg/ajdevserver',
+// 3. Ultra Stable Public Lavalink Node Array
+const nodes = [{
+    host: 'lavalink.lavaclient.xyz',
+    port: 443,
+    authorization: 'https://dsc.gg/ajdevserver',
     secure: true
 }];
 
-// Initialize Shoukaku Connector
-const shoukaku = new Shoukaku(new Connectors.DiscordJS(client), Nodes, {
-    moveOnDisconnect: true,
-    resume: true
-});
-
-// Initialize Kazagumo Player Manager
-client.manager = new Kazagumo({
-    defaultSearchEngine: 'youtube',
-    send: (id, payload) => {
+// Initialize Lavalink Manager
+client.lavalink = new LavalinkManager({
+    nodes,
+    sendGatewayPayload: (id, payload) => {
         const guild = client.guilds.cache.get(id);
         if (guild) guild.shard.send(payload);
     }
-}, shoukaku);
+});
 
-// Lavalink Event Listeners
-client.manager.shoukaku.on('ready', (name) => console.log(`[Lavalink] Node "${name}" connected successfully.`));
-client.manager.shoukaku.on('error', (name, error) => console.log(`[Lavalink] Node "${name}" encountered an error: ${error.message}`));
+// Event Handlers
+client.lavalink.nodeManager.on('connect', (node) => console.log(`[Lavalink] Connected to node: ${node.options.host}`));
+client.lavalink.nodeManager.on('error', (node, error) => console.log(`[Lavalink] Error on node ${node.options.host}:`, error.message));
 
-client.manager.on('playerStart', (player, track) => {
-    const channel = client.channels.cache.get(player.textId);
+client.lavalink.on('trackStart', (player, track) => {
+    const channel = client.channels.cache.get(player.textChannelId);
     if (!channel) return;
 
     const embed = new EmbedBuilder()
         .setColor('#00ffbb')
         .setTitle('🎶 Now Playing')
-        .setDescription(`[${track.title}](${track.uri})`)
+        .setDescription(`[${track.info.title}](${track.info.uri})`)
         .addFields(
-            { name: 'Uploader', value: track.author || 'Unknown', inline: true },
-            { name: 'Duration', value: track.isStream ? '🔴 Live' : new Date(track.length).toISOString().substr(11, 8), inline: true }
+            { name: 'Uploader', value: track.info.author || 'Unknown', inline: true },
+            { name: 'Duration', value: track.info.isStream ? '🔴 Live' : new Date(track.info.duration).toISOString().substr(11, 8), inline: true }
         )
-        .setFooter({ text: 'Melodix Premium Modern Engine' })
+        .setFooter({ text: 'Melodix Audio Cluster' })
         .setTimestamp();
 
     channel.send({ embeds: [embed] });
 });
 
-client.manager.on('queueEmpty', (player) => {
-    const channel = client.channels.cache.get(player.textId);
+client.lavalink.on('queueEnd', (player) => {
+    const channel = client.channels.cache.get(player.textChannelId);
     if (channel) channel.send('Queue is empty. Vacating voice channel...');
     player.destroy();
 });
 
+// Forward Voice Gateway Events Directly
+client.on('raw', (d) => client.lavalink.sendRawGatewayPayload(d));
+
 client.once('ready', () => {
     console.log(`System Check: Gateway verified for ${client.user.tag}`);
+    client.lavalink.init({ id: client.user.id });
 });
 
-// 4. Command Handler with '!!' Prefix
+// 4. Command Parser Engine ('!!')
 const PREFIX = '!!';
 
 client.on('messageCreate', async message => {
@@ -94,32 +91,33 @@ client.on('messageCreate', async message => {
         if (!voiceChannel) return message.reply('⚠️ You must occupy a voice channel first.');
 
         try {
-            let player = client.manager.players.get(message.guild.id);
+            let player = client.lavalink.players.get(message.guild.id);
             
             if (!player) {
-                player = await client.manager.createPlayer({
+                player = await client.lavalink.createPlayer({
                     guildId: message.guild.id,
-                    voiceId: voiceChannel.id,
-                    textId: message.channel.id,
-                    deafen: true
+                    voiceChannelId: voiceChannel.id,
+                    textChannelId: message.channel.id,
+                    selfDeafen: true
                 });
+                await player.connect();
             }
 
-            const res = await client.manager.search(query);
+            const res = await player.search({ query }, message.author);
             
-            if (!res.tracks.length) {
+            if (!res.tracks || !res.tracks.length) {
                 if (!player.queue.current) player.destroy();
                 return message.reply('❌ Query returned no active matches.');
             }
 
-            if (res.type === 'PLAYLIST') {
+            if (res.loadType === 'playlist') {
                 for (let track of res.tracks) player.queue.add(track);
-                if (!player.playing && !player.paused) player.play();
-                return message.reply(`🎶 Queued playlist: **${res.playlistName}** (${res.tracks.length} tracks).`);
+                if (!player.playing && !player.paused) await player.play();
+                return message.reply(`🎶 Queued playlist: **${res.playlist.name}** (${res.tracks.length} tracks).`);
             } else {
                 player.queue.add(res.tracks[0]);
-                if (!player.playing && !player.paused) player.play();
-                return message.reply(`🔍 Added to queue: **${res.tracks[0].title}**`);
+                if (!player.playing && !player.paused) await player.play();
+                return message.reply(`🔍 Added to queue: **${res.tracks[0].info.title}**`);
             }
         } catch (err) {
             console.error(err);
